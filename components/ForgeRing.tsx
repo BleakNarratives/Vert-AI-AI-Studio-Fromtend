@@ -15,6 +15,7 @@ interface ForgeRingProps {
   onProfileSwitch: (profile: UserProfile) => void;
   addOutput: (message: ChatMessage) => void; // For system messages
   lookingGlassContext: any; // Using any for simplicity with complex context type
+  onLoomDataOptimization: () => void; // New prop for Loom Data Optimization handler
 }
 
 interface MenuItem {
@@ -37,17 +38,22 @@ const ForgeRing: React.FC<ForgeRingProps> = ({
   onProfileSwitch,
   addOutput,
   lookingGlassContext,
+  onLoomDataOptimization, // Destructure new prop
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [position, setPosition] = useState({ x: window.innerWidth - 80, y: window.innerHeight - 80 });
   const [isDragging, setIsDragging] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
+  // Fix: Changed HTMLDivLockerElement to HTMLDivElement, as HTMLDivLockerElement is not a standard DOM type.
   const ringRef = useRef<HTMLDivElement>(null);
 
   // Radial menu items
   const menuItems = useCallback((): MenuItem[] => {
     const commonItems: MenuItem[] = [
-      { name: 'New Idea', action: 'newidea ', disabled: !hasApiKey, lockedMessage: "Requires active Gemini API." },
+      { name: 'New Idea', action: 'newidea_init_prompt', disabled: !hasApiKey, lockedMessage: "Requires active Gemini API." }, // Updated action
+      { name: 'Take Snapshot', action: 'take_snapshot_prompt' }, // New snapshot action
+      { name: 'Restore Snapshots', action: 'restore_snapshot_list' }, // New restore action
+      { name: 'Refactor Code', action: 'refactor_code', disabled: !hasApiKey, lockedMessage: "Requires active Gemini API for analysis." }, // Reverted
       { name: 'Swarm Analytics', action: 'swarmanalytics' },
       { name: 'Swarm Pilot', action: 'swarmpilot' },
       { name: 'Loom Data Opt.', action: 'loom_optimize', disabled: !hasApiKey, lockedMessage: "Requires active Gemini API." }, // New item
@@ -56,6 +62,7 @@ const ForgeRing: React.FC<ForgeRingProps> = ({
       { name: 'Sovereign Brain', action: 'sovereignbrain', disabled: !hasApiKey, lockedMessage: "Requires active Gemini API." },
       { name: 'Claude Notes', action: 'claudenotes' },
       { name: 'User Profile', action: 'userprofile' }, // New item
+      { name: 'NLU Status', action: 'nlu_status' }, // New item
       { name: 'Help', action: 'help' },
       { name: 'Clear Terminal', action: 'clear' },
     ];
@@ -153,13 +160,45 @@ const ForgeRing: React.FC<ForgeRingProps> = ({
     } else if (item.action === 'userprofile') {
       handleUserProfileSelection();
     } else if (item.action === 'loom_optimize') {
-      handleLoomDataOptimization();
+      onLoomDataOptimization(); // Call the prop function from TerminalView
+    } else if (item.action === 'take_snapshot_prompt') {
+      const description = prompt("Enter a description for this snapshot:");
+      if (description) {
+        lookingGlassContext?.takeSnapshot(description);
+        addOutput({
+          id: `snapshot-menu-taken-${Date.now()}`,
+          sender: 'SYSTEM',
+          text: `Snapshot '${description}' saved.`,
+          timestamp: new Date().toLocaleTimeString(),
+          isBot: true,
+          type: 'system-message',
+        });
+      } else {
+        addOutput({
+          id: `snapshot-menu-fail-${Date.now()}`,
+          sender: 'SYSTEM',
+          text: `Snapshot not saved: Description required.`,
+          timestamp: new Date().toLocaleTimeString(),
+          isBot: true,
+          type: 'error',
+        });
+      }
+    } else if (item.action === 'restore_snapshot_list') {
+      lookingGlassContext?.showSnapshotList();
+      addOutput({
+        id: `snapshot-menu-list-${Date.now()}`,
+        sender: 'SYSTEM',
+        text: `Displaying available snapshots in Looking Glass.`,
+        timestamp: new Date().toLocaleTimeString(),
+        isBot: true,
+        type: 'system-message',
+      });
     }
     else {
-      onAction(item.action);
+      onAction(item.action); // Now routes through TerminalView's handleCommandSubmit
     }
     setIsMenuOpen(false);
-  }, [onAction, toggleLiveSession, toggleMute, addOutput, lookingGlassContext]);
+  }, [onAction, toggleLiveSession, toggleMute, addOutput, lookingGlassContext, onLoomDataOptimization]);
 
 
   // Close menu if clicking outside or pressing Escape
@@ -220,41 +259,6 @@ const ForgeRing: React.FC<ForgeRingProps> = ({
     lookingGlassContext?.updateLookingGlassContent(
       profileContent,
       'User Profile: Configure'
-    );
-    lookingGlassContext?.toggleLookingGlass(true);
-  };
-
-  const handleLoomDataOptimization = () => {
-    const loomContent = (
-      <CodeEditor
-        code={`# 📈 Loom Data Optimization Protocol
-## Status: ACTIVE
-
-### Overview
-This protocol ensures massive data compression and seamless integration with the Loom NAT DB, optimizing data streams across GlassForge.
-
-### Current Operations:
-- **Real-time Compression:** Applying zstd (Zstandard) and Brotli algorithms to all generated logs, temporary files, and AI response payloads.
-- **Loom NAT DB Bridging:** Continuously indexing metadata and conversation IDs into \`/storage/ED7B-AD5A/root_2026/modmind-repo/data/modmind.db\` and \`/storage/ED7B-AD5A/root_2026/pytch/pytch.db\` (via \`sovereign_brain_bridge.py\` and \`conversation_logger.py\`).
-- **Resource Allocation:** Monitoring CPU/Memory usage for compression tasks. Currently at 5% CPU, 128MB RAM for background processing.
-- **Error Checking:** Implementing robust checksums for data integrity during compression and transfer.
-
-### Impact:
-- **Storage Savings:** Projected 70-85% reduction in log and temporary file storage.
-- **Bandwidth Efficiency:** 60% faster data transfer for large AI outputs.
-- **Auditability:** Full historical audit trail via Loom for all agentic actions and user interactions.
-
-### Next Steps:
-- Implement client-side WASM compression for pre-processing large user inputs.
-- Integrate predictive data retention policies.
-`}
-        language="markdown"
-        className="h-full"
-      />
-    );
-    lookingGlassContext?.updateLookingGlassContent(
-      loomContent,
-      'Loom Data Optimization'
     );
     lookingGlassContext?.toggleLookingGlass(true);
   };

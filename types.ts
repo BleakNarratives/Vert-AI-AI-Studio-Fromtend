@@ -16,7 +16,7 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   isBot: boolean;
-  type: 'command' | 'ai-response' | 'system-message' | 'error' | 'terminal-game';
+  type: 'command' | 'ai-response' | 'system-message' | 'error' | 'terminal-game' | 'nlu-processing' | 'nlu-clarification';
 }
 
 export interface LookingGlassState {
@@ -27,10 +27,45 @@ export interface LookingGlassState {
   title: string;
 }
 
+export interface AppSnapshot {
+  id: string;
+  timestamp: string;
+  description: string;
+  appState: {
+    currentView: AppView;
+    currentUserProfileId: string;
+    lookingGlassState: LookingGlassState;
+  };
+  terminalState: {
+    terminalOutput: ChatMessage[];
+    currentUserProfile: UserProfile;
+    liveSessionActive: boolean;
+    // Add other relevant terminal states if needed for full restore
+  };
+  conceptualFileContents: { [key: string]: string }; // E.g., 'ClaudeDevNotes.md': 'content...'
+}
+
+export interface SnapshotService {
+  saveSnapshot(snapshot: AppSnapshot): void;
+  listSnapshots(): AppSnapshot[];
+  loadSnapshot(id: string): AppSnapshot | null;
+  deleteSnapshot(id: string): void;
+}
+
+export interface SnapshotListDisplayProps {
+  snapshots: AppSnapshot[];
+  onRestore: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
 export interface LookingGlassContextType {
   lookingGlassState: LookingGlassState;
   updateLookingGlassContent: (content: React.ReactNode, title: string) => void;
   toggleLookingGlass: (isVisible?: boolean) => void;
+  takeSnapshot: (description: string) => void;
+  showSnapshotList: () => void;
+  restoreSnapshot: (id: string) => void;
+  deleteSnapshot: (id: string) => void;
 }
 
 export type LLMModelName =
@@ -47,6 +82,7 @@ export type LLMModelConfig = {
   seed?: number;
   maxOutputTokens?: number;
   thinkingConfig?: { thinkingBudget: number };
+  systemInstruction?: string; // Added to allow NLU to modify it
 };
 
 // --- Gemini Live API Specific Types & Utilities ---

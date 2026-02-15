@@ -1,5 +1,5 @@
 {
-  "name": "GlassForge: Vertical AI Development Environment",
+  "name": "Vertical AI Boardrooms",
   "description": "The first post-desktop development environment. A mobile-first, AI-native, swarm-based platform within a futuristic terminal interface, featuring the 'Forge Ring' for intuitive control and leveraging Gemini AI for dynamic insights and automation.",
   "requestFramePermissions": [
     "microphone",

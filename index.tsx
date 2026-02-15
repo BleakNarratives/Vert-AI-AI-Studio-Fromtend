@@ -1,6 +1,7 @@
 import React from 'react';
-import ReactDOM from 'react-dom'; // Changed from 'react-dom/client'
+import ReactDOM from 'react-dom/client'; // Changed to import from 'react-dom/client'
 import App from './App';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

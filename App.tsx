@@ -1,11 +1,13 @@
-import React, { useState, useEffect, createContext, useCallback } from 'react';
+import React, { useState, useEffect, createContext, useCallback, useRef } from 'react';
 import TerminalView from './views/TerminalView'; // New main view
 import LookingGlass from './components/LookingGlass';
 import { GoogleGenAI } from '@google/genai';
 import {
+  AppSnapshot,
   AppView,
   LookingGlassContextType,
   LookingGlassState,
+  SnapshotListDisplayProps,
 } from './types';
 import {
   INITIAL_LOOKING_GLASS_STATE,
@@ -15,10 +17,27 @@ import {
 } from './constants';
 import LoadingSpinner from './components/LoadingSpinner';
 import ApiKeyStatusIndicator from './components/ApiKeyStatusIndicator';
+import { LocalStorageSnapshotService } from './services/snapshotService'; // New import
+import { v4 as uuidv4 } from 'uuid'; // For unique IDs
+
+// Raw imports for conceptual file content snapshotting
+import ClaudeDevNotes from './content/GlassForge_ModMind_DevNotes.md?raw';
+import SwarmMonitoringGuide from './content/SWARM_MONITORING_README.md?raw';
+import SwarmPilotingGuide from './content/SWARM_PILOTING_GUIDE.md?raw';
+// Conceptual code files for snapshotting and simulated analysis (original set)
+import PainEngineCode from './pain_engine.py?raw';
+import ScraperCode from './scraper.py?raw';
+import CelticLoomCompleteCode from './celtic_loom_complete.py?raw';
+
+// NOTE: Temporarily removed newly added conceptual Python/Markdown files
+// to simplify the build and focus on preview repair as per user request.
+
 
 // Context for managing the Looking Glass visibility and content
 export const LookingGlassContext =
   createContext<LookingGlassContextType | null>(null);
+
+const snapshotService = new LocalStorageSnapshotService(); // Instantiate service
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>('splash');
@@ -29,6 +48,10 @@ const App: React.FC = () => {
   const [genAI, setGenAI] = useState<GoogleGenAI | null>(null);
   const [isApiKeySelected, setIsApiKeySelected] = useState(false);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [snapshotToRestore, setSnapshotToRestore] = useState<AppSnapshot['terminalState'] | null>(null);
+  const terminalRef = useRef<{ getTerminalState: () => AppSnapshot['terminalState'] }>(null); // Ref to get terminal state
+  const currentUserProfileRef = useRef<any>(null); // To capture currentUserProfile from TerminalView
+
   const isGeminiActive = isApiKeySelected && genAI !== null;
 
   // --- Core API Key Management Functions ---
@@ -116,10 +139,81 @@ const App: React.FC = () => {
     }));
   }, []);
 
+  // --- Snapshot Management Functions ---
+
+  const takeSnapshot = useCallback((description: string) => {
+    const currentTerminalState = terminalRef.current?.getTerminalState();
+    if (!currentTerminalState) {
+      console.error("Terminal state not available for snapshot.");
+      return;
+    }
+
+    const snapshot: AppSnapshot = {
+      id: uuidv4(),
+      timestamp: new Date().toISOString(),
+      description,
+      appState: {
+        currentView,
+        currentUserProfileId: currentTerminalState.currentUserProfile.id,
+        lookingGlassState,
+      },
+      terminalState: currentTerminalState,
+      conceptualFileContents: {
+        'ClaudeDevNotes.md': ClaudeDevNotes,
+        'SwarmMonitoringGuide.md': SwarmMonitoringGuide,
+        'SwarmPilotingGuide.md': SwarmPilotingGuide,
+        'pain_engine.py': PainEngineCode,
+        'scraper.py': ScraperCode,
+        'celtic_loom_complete.py': CelticLoomCompleteCode,
+        // NOTE: Temporarily removed newly added conceptual Python/Markdown files
+        // from snapshotting to simplify the build and focus on preview repair as per user request.
+      },
+    };
+    snapshotService.saveSnapshot(snapshot);
+    alert(`Snapshot '${description}' saved!`);
+  }, [currentView, lookingGlassState]);
+
+  const restoreSnapshot = useCallback((id: string) => {
+    const snapshot = snapshotService.loadSnapshot(id);
+    if (snapshot) {
+      setCurrentView(snapshot.appState.currentView);
+      // set currentUserProfile directly in TerminalView via prop
+      setSnapshotToRestore(snapshot.terminalState);
+      setLookingGlassState(snapshot.appState.lookingGlassState);
+      toggleLookingGlass(false); // Close looking glass after restore
+      alert(`Restored to snapshot: '${snapshot.description}'`);
+    }
+  }, [toggleLookingGlass]);
+
+  const deleteSnapshot = useCallback((id: string) => {
+    if (window.confirm('Are you sure you want to delete this snapshot?')) {
+      snapshotService.deleteSnapshot(id);
+      showSnapshotList(); // Refresh the list
+    }
+  }, []);
+
+  const showSnapshotList = useCallback(() => {
+    const snapshots = snapshotService.listSnapshots();
+    const snapshotListContent = (
+      <SnapshotListDisplay
+        snapshots={snapshots}
+        onRestore={restoreSnapshot}
+        onDelete={deleteSnapshot}
+      />
+    );
+    updateLookingGlassContent(snapshotListContent, 'Version Control: Snapshots');
+    toggleLookingGlass(true);
+  }, [updateLookingGlassContent, toggleLookingGlass, restoreSnapshot, deleteSnapshot]);
+
+
   const LookingGlassContextProviderValue: LookingGlassContextType = {
     lookingGlassState,
     updateLookingGlassContent,
     toggleLookingGlass,
+    takeSnapshot,
+    showSnapshotList,
+    restoreSnapshot,
+    deleteSnapshot,
   };
 
   if (loading && !apiKeyError && !isGeminiActive) {
@@ -228,12 +322,14 @@ const App: React.FC = () => {
 
         {currentView === 'terminal' && (
           <TerminalView
+            ref={terminalRef}
             genAI={genAI}
             modelName={LLM_MODEL_NAME}
             liveModelName={LLM_MODEL_NAME_LIVE}
             modelConfig={LLM_MODEL_CONFIG}
             isGeminiActive={isGeminiActive}
             onSelectApiKey={handleSelectApiKey}
+            initialStateFromSnapshot={snapshotToRestore} // Pass snapshot data
           />
         )}
 
@@ -251,3 +347,53 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+
+// Placeholder component for rendering the list of snapshots
+// This would be in its own file like components/SnapshotListDisplay.tsx
+interface SnapshotListDisplayPropsInternal extends SnapshotListDisplayProps {}
+
+const SnapshotListDisplay: React.FC<SnapshotListDisplayPropsInternal> = ({
+  snapshots,
+  onRestore,
+  onDelete,
+}) => {
+  return (
+    <div className="p-4">
+      <h3 className="text-xl font-bold mb-4 text-indigo-400">Available Snapshots</h3>
+      {snapshots.length === 0 ? (
+        <p className="text-gray-400 italic">No snapshots saved yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {snapshots.map((snapshot) => (
+            <li
+              key={snapshot.id}
+              className="bg-gray-800 p-3 rounded-lg border border-gray-700 flex flex-col md:flex-row justify-between items-start md:items-center"
+            >
+              <div className="mb-2 md:mb-0">
+                <p className="font-bold text-green-300">{snapshot.description}</p>
+                <p className="text-xs text-gray-400">
+                  ID: {snapshot.id.substring(0, 8)}... | Saved: {new Date(snapshot.timestamp).toLocaleString()}
+                </p>
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => onRestore(snapshot.id)}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm transition-colors"
+                >
+                  Restore
+                </button>
+                <button
+                  onClick={() => onDelete(snapshot.id)}
+                  className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};

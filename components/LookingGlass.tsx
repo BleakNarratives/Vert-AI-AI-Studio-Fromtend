@@ -1,9 +1,59 @@
+
 import React, { useState, useRef, useEffect, useContext, useCallback } from 'react';
 import { LookingGlassContext } from '../App';
+import { SnapshotListDisplayProps } from '../types'; // Import SnapshotListDisplayProps
 
 interface LookingGlassComponentProps {
   // Can add props to configure default content if needed
 }
+
+// Placeholder component for rendering the list of snapshots
+// This would be in its own file like components/SnapshotListDisplay.tsx
+const SnapshotListDisplay: React.FC<SnapshotListDisplayProps> = ({
+  snapshots,
+  onRestore,
+  onDelete,
+}) => {
+  return (
+    <div className="p-4">
+      <h3 className="text-xl font-bold mb-4 text-indigo-400">Available Snapshots</h3>
+      {snapshots.length === 0 ? (
+        <p className="text-gray-400 italic">No snapshots saved yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {snapshots.map((snapshot) => (
+            <li
+              key={snapshot.id}
+              className="bg-gray-800 p-3 rounded-lg border border-gray-700 flex flex-col md:flex-row justify-between items-start md:items-center"
+            >
+              <div className="mb-2 md:mb-0">
+                <p className="font-bold text-green-300">{snapshot.description}</p>
+                <p className="text-xs text-gray-400">
+                  ID: {snapshot.id.substring(0, 8)}... | Saved: {new Date(snapshot.timestamp).toLocaleString()}
+                </p>
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => onRestore(snapshot.id)}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm transition-colors"
+                >
+                  Restore
+                </button>
+                <button
+                  onClick={() => onDelete(snapshot.id)}
+                  className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 
 const LookingGlass: React.FC<LookingGlassComponentProps> = () => {
   const lookingGlassContext = useContext(LookingGlassContext);
@@ -13,20 +63,21 @@ const LookingGlass: React.FC<LookingGlassComponentProps> = () => {
     );
   }
 
-  const { lookingGlassState, toggleLookingGlass } = lookingGlassContext;
+  const { lookingGlassState, toggleLookingGlass, restoreSnapshot, deleteSnapshot } = lookingGlassContext;
   const { isVisible, position, size, content, title } = lookingGlassState;
 
-  const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const resizeStart = useRef({ x: 0, y: 0 });
-  const resizeDirection = useRef('');
-
-  // Use state for current position and size to allow local manipulation
   const [currentPosition, setCurrentPosition] = useState(position);
   const [currentSize, setCurrentSize] = useState(size);
 
   const windowRef = useRef<HTMLDivElement>(null);
+  
+  // Use refs for mutable state that doesn't trigger re-renders
+  const isDraggingRef = useRef(false);
+  const isResizingRef = useRef(false);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const resizeStartRef = useRef({ x: 0, y: 0 });
+  const resizeDirectionRef = useRef('');
+
 
   // Update local state when props change (e.g., if initial position is set externally)
   useEffect(() => {
@@ -39,34 +90,35 @@ const LookingGlass: React.FC<LookingGlassComponentProps> = () => {
     if (!windowRef.current) return;
 
     if (type === 'drag') {
-      setIsDragging(true);
-      dragOffset.current = {
+      isDraggingRef.current = true;
+      dragOffsetRef.current = {
         x: e.clientX - currentPosition.x,
         y: e.clientY - currentPosition.y,
       };
     } else if (type.startsWith('resize')) {
-      setIsResizing(true);
-      resizeStart.current = { x: e.clientX, y: e.clientY };
-      resizeDirection.current = type;
+      isResizingRef.current = true;
+      resizeStartRef.current = { x: e.clientX, y: e.clientY };
+      resizeDirectionRef.current = type;
     }
   }, [currentPosition]);
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isDragging) {
-      const newX = e.clientX - dragOffset.current.x;
-      const newY = e.clientY - dragOffset.current.y;
+  // Global mousemove and mouseup handlers
+  const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
+    if (isDraggingRef.current) {
+      const newX = e.clientX - dragOffsetRef.current.x;
+      const newY = e.clientY - dragOffsetRef.current.y;
       setCurrentPosition({ x: newX, y: newY });
-    } else if (isResizing) {
-      const deltaX = e.clientX - resizeStart.current.x;
-      const deltaY = e.clientY - resizeStart.current.y;
+    } else if (isResizingRef.current) {
+      const deltaX = e.clientX - resizeStartRef.current.x;
+      const deltaY = e.clientY - resizeStartRef.current.y;
 
       setCurrentSize((prevSize) => {
         let newWidth = prevSize.width;
         let newHeight = prevSize.height;
-        let newX = currentPosition.x; // Keep track of position changes during resize
+        let newX = currentPosition.x; 
         let newY = currentPosition.y;
 
-        switch (resizeDirection.current) {
+        switch (resizeDirectionRef.current) {
           case 'resize-nw':
             newWidth = prevSize.width - deltaX;
             newHeight = prevSize.height - deltaY;
@@ -108,34 +160,45 @@ const LookingGlass: React.FC<LookingGlassComponentProps> = () => {
         newHeight = Math.max(newHeight, 200);
 
         setCurrentPosition({ x: newX, y: newY });
-        resizeStart.current = { x: e.clientX, y: e.clientY }; // Update resize start for continuous resize
+        resizeStartRef.current = { x: e.clientX, y: e.clientY }; // Update resize start for continuous resize
         return { width: newWidth, height: newHeight };
       });
     }
-  }, [isDragging, isResizing, currentPosition]);
+  }, [currentPosition]); // Depend on currentPosition to ensure correct delta calculations
 
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-    setIsResizing(false);
-    resizeDirection.current = '';
+  const handleGlobalMouseUp = useCallback(() => {
+    isDraggingRef.current = false;
+    isResizingRef.current = false;
+    resizeDirectionRef.current = '';
   }, []);
 
+  // Attach global event listeners once on mount and clean up on unmount
   useEffect(() => {
-    if (isDragging || isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    } else {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    }
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [isDragging, isResizing, handleMouseMove, handleMouseUp]);
+  }, [handleGlobalMouseMove, handleGlobalMouseUp]); // Dependencies are stable callbacks
 
   if (!isVisible) return null;
+
+  // Check if the content is a SnapshotListDisplay component (by type checking, conceptually)
+  // This is a common pattern for dynamic content in React.
+  const isSnapshotList = (c: React.ReactNode): c is React.ReactElement<SnapshotListDisplayProps> => {
+    // This check is a simplification. In a real app, you'd have a more robust way
+    // to identify content types, e.g., by passing a type flag or using context
+    // or by inspecting the element's type if it's a known component.
+    // For this conceptual purpose, we'll assume the content passed for snapshots
+    // is always of this specific type.
+    if (React.isValidElement(c) && c.type === SnapshotListDisplay) {
+      return true;
+    }
+    return false;
+  };
+
 
   return (
     <div
@@ -151,6 +214,9 @@ const LookingGlass: React.FC<LookingGlassComponentProps> = () => {
         resize: 'none', // Disable native resize
         boxShadow: '0 0 30px rgba(99, 102, 241, 0.7), 0 0 60px rgba(129, 140, 248, 0.4)', // Deeper glow
       }}
+      role="dialog" // ARIA role for accessibility
+      aria-modal="true" // Indicate that it's a modal dialog
+      data-testid="looking-glass-window" // Test ID
     >
       {/* Handle for dragging */}
       <div
@@ -169,10 +235,17 @@ const LookingGlass: React.FC<LookingGlassComponentProps> = () => {
 
       {/* Content Area */}
       <div className="flex h-[calc(100%-48px)] w-full flex-col overflow-auto p-4 text-gray-200 text-base">
-        {content || (
-          <p className="text-center text-gray-500 italic mt-4">
-            Awaiting quantum data stream...
-          </p>
+        {isSnapshotList(content) ? (
+          // If content is a snapshot list, clone it with context functions
+          // Fix: Explicitly pass the restoreSnapshot and deleteSnapshot functions from context
+          React.cloneElement(content, { onRestore: restoreSnapshot, onDelete: deleteSnapshot })
+        ) : (
+          // Otherwise, render general content
+          content || (
+            <p className="text-center text-gray-500 italic mt-4">
+              Awaiting quantum data stream...
+            </p>
+          )
         )}
       </div>
 
